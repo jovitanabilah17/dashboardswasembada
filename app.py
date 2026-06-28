@@ -104,14 +104,19 @@ st.markdown("""
 @st.cache_resource
 def connect_to_gsheets():
     try: # Nyoba konek nih
-        secret_info = st.secrets["gcp_service_account"] # Ngambil kredensial JSON dari Streamlit secrets
+        secret_info = st.secrets["gcp_service_account"] # Ngambil kredensial dari Streamlit secrets
         
-        # --- PERBAIKAN: PARSING UNTUK AMANKAN BYPASS INVALID TOML ---
-        if "json_string" in secret_info:
+        # --- LOGIKA SAKTI DEKODE BASE64 UNTUK BYPASS TOML ESCAPE ERROR ---
+        if "base64_string" in secret_info:
+            # Mengambil string base64, mendekodenya ke bytes, lalu mengubahnya ke JSON dict asli
+            decoded_bytes = base64.b64decode(secret_info["base64_string"])
+            decoded_json = decoded_bytes.decode("utf-8")
+            credentials_dict = json.loads(decoded_json)
+        elif "json_string" in secret_info:
             credentials_dict = json.loads(secret_info["json_string"])
         else:
             credentials_dict = secret_info
-        # ------------------------------------------------------------
+        # -----------------------------------------------------------------
         
         scopes = [ # Tentu-in izin aksesnya (baca sheets & drive)
             'https://www.googleapis.com/auth/spreadsheets',
@@ -490,7 +495,7 @@ def render_admin_page():
         current_label = chart_cfg.get("label", default_label) # Ambil namanya
 
         with st.expander(f"Pengaturan: {current_label}", expanded=False): # Bikin komponen bisa di-drop-down/expander
-            enabled = st.checkbox( # Bikin kotak centang
+            enabled = st.checkbox(
                 "Tampilkan grafik ini di dashboard",
                 value=chart_cfg.get("enabled", True), # Nilai defaultnya ngambil dari config
                 key=f"admin_enabled_{chart_key}", # Kunci unik (wajib ada di Streamlit tiap nambah form element)
