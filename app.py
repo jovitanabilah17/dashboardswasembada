@@ -106,14 +106,17 @@ def connect_to_gsheets():
     try: # Nyoba konek nih
         secret_info = st.secrets["gcp_service_account"] # Ngambil kredensial dari Streamlit secrets
         
-        # --- LOGIKA SAKTI DEKODE BASE64 UNTUK BYPASS TOML ESCAPE ERROR ---
+        # --- LOGIKA DEKODE BASE64 DENGAN PROTEKSI ASCII PURGE ---
         if "base64_string" in secret_info:
-            # Mengambil string base64, mendekodenya ke bytes, lalu mengubahnya ke JSON dict asli
-            decoded_bytes = base64.b64decode(secret_info["base64_string"])
+            # Ambil string, paksa bersihkan hanya karakter ASCII murni untuk mencegah error
+            clean_base64 = str(secret_info["base64_string"]).strip().encode('ascii', 'ignore')
+            decoded_bytes = base64.b64decode(clean_base64)
             decoded_json = decoded_bytes.decode("utf-8")
             credentials_dict = json.loads(decoded_json)
         elif "json_string" in secret_info:
-            credentials_dict = json.loads(secret_info["json_string"])
+            # Proteksi yang sama jika menggunakan json_string biasa
+            clean_json = str(secret_info["json_string"]).strip().encode('ascii', 'ignore')
+            credentials_dict = json.loads(clean_json.decode("utf-8"))
         else:
             credentials_dict = secret_info
         # -----------------------------------------------------------------
