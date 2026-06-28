@@ -58,6 +58,7 @@ st.markdown("""
     .header-container { background: linear-gradient(135deg, #1B5E20 0%, #2E7D32 50%, #388E3C 100%); padding: 20px; border-radius: 0px; margin: -60px -70px 30px -70px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); gap: 20px; }
     .header-left { display: flex; align-items: center; gap: 20px; }
     .header-logo { height: 80px; width: auto; margin-left: 20px; }
+    .header-logo img { height: 100%; width: auto; object-fit: contain; }
     .header-title { color: white; font-size: 18px; font-weight: bold; text-transform: uppercase; margin: 0; line-height: 1.3; }
     .header-subtitle { color: white; font-size: 14px; margin: 0; }
     .print-button-header { background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.45); color: white; text-decoration: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 700; white-space: nowrap; margin-right: 20px; transition: all 0.2s ease; }
@@ -106,20 +107,24 @@ def connect_to_gsheets():
     try: # Nyoba konek nih
         secret_info = st.secrets["gcp_service_account"] # Ngambil kredensial dari Streamlit secrets
         
-        # --- LOGIKA DEKODE BASE64 DENGAN PENAMBAL PADDING OTOMATIS ---
+        # --- LOGIKA SAKTI DEKODE BASE64 DENGAN PENAMBAL PADDING OTOMATIS ---
         if "base64_string" in secret_info:
-            # 1. Bersihkan spasi tersembunyi atau baris baru di ujung teks
+            # 1. Ambil teks, bersihkan dari spasi ujung atau baris baru kosong
             b64_str = str(secret_info["base64_string"]).strip()
             
-            # 2. Hilangkan karakter non-base64 jika ada yang terselip
+            # 2. Amankan string dengan menyaring karakter valid Base64 saja
             b64_str = ''.join(c for c in b64_str if c.isalnum() or c in '+/=')
             
-            # 3. Rumus Sakti: Perbaiki padding matematika Base64 (wajib kelipatan 4)
+            # 3. Penambal Matematika: Jika string terpotong/kurang, tambahkan '=' sampai kelipatan 4
             missing_padding = len(b64_str) % 4
             if missing_padding:
-                b64_str += '=' * (4 - missing_padding)
+                if missing_padding == 1:
+                    # Kasus langka string kelebihan 1 karakter: potong karakter terakhir yang merusak
+                    b64_str = b64_str[:-1]
+                else:
+                    b64_str += '=' * (4 - missing_padding)
             
-            # 4. Ubah ke ASCII murni lalu dekode aman!
+            # 4. Ubah ke ASCII murni lalu bongkar ke JSON Dictionary
             clean_base64 = b64_str.encode('ascii', 'ignore')
             decoded_bytes = base64.b64decode(clean_base64)
             decoded_json = decoded_bytes.decode("utf-8")
@@ -146,7 +151,7 @@ def connect_to_gsheets():
     except Exception as e: # Kalo gagal konek...
         st.error(f"Error connecting to Google Sheets: {str(e)}") # Munculin pesan error merah di web
         return None # Balikin kosongan
-        
+
 # Cache data biar ga ngabisin kuota API baca GSheets terus (di-refresh tiap 300 detik alias 5 menit)
 @st.cache_data(ttl=300)
 def load_data_from_sheets(_client, spreadsheet_url, sheet_name="Sheet1"):
