@@ -106,15 +106,26 @@ def connect_to_gsheets():
     try: # Nyoba konek nih
         secret_info = st.secrets["gcp_service_account"] # Ngambil kredensial dari Streamlit secrets
         
-        # --- LOGIKA DEKODE BASE64 DENGAN PROTEKSI ASCII PURGE ---
+        # --- LOGIKA DEKODE BASE64 DENGAN PENAMBAL PADDING OTOMATIS ---
         if "base64_string" in secret_info:
-            # Ambil string, paksa bersihkan hanya karakter ASCII murni untuk mencegah error
-            clean_base64 = str(secret_info["base64_string"]).strip().encode('ascii', 'ignore')
+            # 1. Bersihkan spasi tersembunyi atau baris baru di ujung teks
+            b64_str = str(secret_info["base64_string"]).strip()
+            
+            # 2. Hilangkan karakter non-base64 jika ada yang terselip
+            b64_str = ''.join(c for c in b64_str if c.isalnum() or c in '+/=')
+            
+            # 3. Rumus Sakti: Perbaiki padding matematika Base64 (wajib kelipatan 4)
+            missing_padding = len(b64_str) % 4
+            if missing_padding:
+                b64_str += '=' * (4 - missing_padding)
+            
+            # 4. Ubah ke ASCII murni lalu dekode aman!
+            clean_base64 = b64_str.encode('ascii', 'ignore')
             decoded_bytes = base64.b64decode(clean_base64)
             decoded_json = decoded_bytes.decode("utf-8")
             credentials_dict = json.loads(decoded_json)
+            
         elif "json_string" in secret_info:
-            # Proteksi yang sama jika menggunakan json_string biasa
             clean_json = str(secret_info["json_string"]).strip().encode('ascii', 'ignore')
             credentials_dict = json.loads(clean_json.decode("utf-8"))
         else:
@@ -135,7 +146,7 @@ def connect_to_gsheets():
     except Exception as e: # Kalo gagal konek...
         st.error(f"Error connecting to Google Sheets: {str(e)}") # Munculin pesan error merah di web
         return None # Balikin kosongan
-
+        
 # Cache data biar ga ngabisin kuota API baca GSheets terus (di-refresh tiap 300 detik alias 5 menit)
 @st.cache_data(ttl=300)
 def load_data_from_sheets(_client, spreadsheet_url, sheet_name="Sheet1"):
