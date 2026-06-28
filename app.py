@@ -100,55 +100,51 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True) # Tag ini ngizinin Streamlit nge-render HTML/CSS murni kita
 
+# Pake cache_resource biar koneksi ke GSheets ga di-restart terus tiap user nge-klik sesuatu
 @st.cache_resource
 def connect_to_gsheets():
-    try: 
-        # 1. Ambil section rahasia dari secrets
-        secret_info = st.secrets["gserviceaccount"]
+    try: # Nyoba konek nih
+        # Ambil salinan dict credential dari secrets agar bisa dimodifikasi di memori
+        credentials_dict = dict(st.secrets["gserviceaccount"])
         
-        # 2. Tentukan cara mengambil kredensial (aman dari error jika format berubah)
-        if "json_string" in secret_info:
-            credentials_dict = json.loads(secret_info["json_string"])
-        else:
-            # Jika tidak pakai json_string, fallback ke format dictionary biasa
-            credentials_dict = dict(secret_info)
-            
-        # 3. DEBUG: Cek apa saja yang terbaca
-        st.write("Keys yang ditemukan di credentials_dict:", credentials_dict.keys())
+        # --- LOGIKA SAKTI SANITASI KUNCI PEM PRIVATE KEY ---
+        raw_key = credentials_dict["private_key"]
         
-        # 4. Sanitasi Kunci Private Key (Wajib bersih dari spasi/baris rusak)
-        if "private_key" in credentials_dict:
-            raw_key = credentials_dict["private_key"]
-            
-            # Bersihkan literal \n dan satukan
-            raw_key = raw_key.replace("\\n", "\n")
-            lines = [line.strip() for line in raw_key.split("\n") if line.strip()]
-            
-            # Rekonstruksi struktur PEM yang bersih
-            header = "-----BEGIN PRIVATE KEY-----"
-            footer = "-----END PRIVATE KEY-----"
-            body_lines = [l for l in lines if "-----" not in l]
-            body_text = "".join(body_lines)
-            
-            credentials_dict["private_key"] = f"{header}\n{body_text}\n{footer}\n"
+        # 1. Bersihkan penulisan literal \n jika tidak sengaja ter-escape ganda di TOML
+        raw_key = raw_key.replace("\\n", "\n")
         
-        # 5. Otorisasi ke Google Sheets
-        scopes = [
+        # 2. Pisahkan teks berdasarkan baris baru untuk mendeteksi isi kunci asli
+        lines = [line.strip() for line in raw_key.split("\n") if line.strip()]
+        
+        # 3. Rekonstruksi struktur PEM: satukan bagian header, body kunci, dan footer secara bersih
+        header = "-----BEGIN PRIVATE KEY-----"
+        footer = "-----END PRIVATE KEY-----"
+        
+        # Ambil semua teks body di antara header dan footer
+        body_lines = [l for l in lines if "-----" not in l]
+        body_text = "".join(body_lines)
+        
+        # Atur ulang ke format string PEM lurus tunggal yang dimengerti library cryptography
+        clean_key = f"{header}\n{body_text}\n{footer}\n"
+        credentials_dict["private_key"] = clean_key
+        # -----------------------------------------------------------------
+        
+        scopes = [ # Tentu-in izin aksesnya (baca sheets & drive)
             'https://www.googleapis.com/auth/spreadsheets',
             'https://www.googleapis.com/auth/drive'
         ]
         
+        # Bikin token kredensial pake data rapi tadi
         credentials = Credentials.from_service_account_info(
             credentials_dict,
             scopes=scopes
         )
-        client = gspread.authorize(credentials)
-        return client 
-        
-    except Exception as e:
-        st.error(f"Error connecting to Google Sheets: {str(e)}")
-        return None
-        
+        client = gspread.authorize(credentials) # Log-in ke Gspread!
+        return client # Kalo sukses, balikin objek client-nya
+    except Exception as e: # Kalo gagal konek...
+        st.error(f"Error connecting to Google Sheets: {str(e)}") # Munculin pesan error merah di web
+        return None # Balikin kosongan
+
 # Cache data biar ga ngabisin kuota API baca GSheets terus (di-refresh tiap 300 detik alias 5 menit)
 @st.cache_data(ttl=300)
 def load_data_from_sheets(_client, spreadsheet_url, sheet_name="Sheet1"):
