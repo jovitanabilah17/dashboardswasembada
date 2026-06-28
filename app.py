@@ -1,4 +1,4 @@
-﻿import streamlit as st # Panggil bos besar Streamlit buat bikin UI webnya
+import streamlit as st # Panggil bos besar Streamlit buat bikin UI webnya
 import streamlit.components.v1 as components # Buat nyelipin elemen HTML/JS custom nih
 import gspread # Modul andalan buat narik data dari Google Sheets
 from google.oauth2.service_account import Credentials # Buat urusan login pake service account Google (Biar aman bro)
@@ -88,7 +88,7 @@ st.markdown("""
     .akumulasi-header { background: linear-gradient(135deg, #F9A825 0%, #FBC02D 100%); padding: 10px 20px; border-radius: 5px; font-weight: bold; font-size: 18px; color: white; margin: 30px 0 20px 0; text-transform: uppercase; text-align: center; }
     .divider { height: 3px; background: linear-gradient(90deg, transparent, #2E7D32, transparent); margin: 40px 0; }
     .profesi-header { background: linear-gradient(135deg, #F9A825 0%, #FBC02D 100%); padding: 15px 20px; border-radius: 5px; font-weight: bold; font-size: 20px; color: white; margin: 30px 0 30px 0; text-transform: uppercase; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .profesi-card { background: white; border: 3px solid #2E7D32; border-radius: 15px; padding: 20px; margin: 0 10px 20px 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); height: 100%; transition: transform 0.2s, box-shadow 0.2s; }
+    .profesi-card { background: white; border: 3px solid #2E7D32; border-radius: 15px; padding: 20px; margin: 0 10px 20px 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); height: 100%; transition: transform 0.2s, box-shadow 0.2s; border: 2px solid transparent; }
     .profesi-card:hover { transform: translateY(-5px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
     .profesi-card .profesi-icon { font-size: 60px; margin-bottom: 10px; line-height: 1; display: block; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif; }
     .profesi-card .profesi-label { font-size: 14px; color: #2E7D32; font-weight: 600; margin: 10px 0; min-height: 40px; display: flex; align-items: center; justify-content: center; }
@@ -104,7 +104,15 @@ st.markdown("""
 @st.cache_resource
 def connect_to_gsheets():
     try: # Nyoba konek nih
-        credentials_dict = st.secrets["gcp_service_account"] # Ngambil kredensial JSON dari Streamlit secrets
+        secret_info = st.secrets["gcp_service_account"] # Ngambil kredensial JSON dari Streamlit secrets
+        
+        # --- PERBAIKAN: PARSING UNTUK AMANKAN BYPASS INVALID TOML ---
+        if "json_string" in secret_info:
+            credentials_dict = json.loads(secret_info["json_string"])
+        else:
+            credentials_dict = secret_info
+        # ------------------------------------------------------------
+        
         scopes = [ # Tentu-in izin aksesnya (baca sheets & drive)
             'https://www.googleapis.com/auth/spreadsheets',
             'https://www.googleapis.com/auth/drive'
@@ -179,7 +187,7 @@ def load_multiple_sheets(_client, spreadsheet_url, sheets_config):
                         else:
                             unique_sheets[sheet_name] = pd.DataFrame() # Kalo beneran kosong plong
                 
-                data_dict[key] = unique_sheets[sheet_name].copy() # Masukin hasil akhirnya ke kamus
+                data_dict[key] = unique_sheets[sheet_name].copy() # Masukin hasil akhirya ke kamus
                 
             except Exception as e: # Kalo sheet tertentu aja yang gagal
                 st.warning(f"Error loading sheet '{sheet_name}' for key '{key}': {str(e)}") # Kasih warning
@@ -653,6 +661,7 @@ def render_dashboard():
     opt_lahan_non_rawa = 0
     cetak_sawah = 0
     padi_gogo = 0
+    sub_brigade_pangan = 0
     brigade_pangan = 0
     
     update_kegiatan = 0
