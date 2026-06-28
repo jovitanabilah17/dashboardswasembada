@@ -15,7 +15,7 @@ import hashlib # Buat ngenkripsi/nge-hash password biar aman
 import os # Buat interaksi sama sistem operasi (misal bikin random byte buat salt password)
 import time # Buat jeda waktu (delay), biasanya kepake pas mau retry koneksi
 
-# Ngatur tampilan awal halaman web lo (Wajib berada di baris paling atas eksekusi)
+# Ngatur tampilan awal halaman web lo
 st.set_page_config(
     page_title="Dashboard BRMP - Swasembada Pangan", # Judul tab di browser nih bos
     page_icon="🌾", # Pake emoji padi biar kerasa nuansa pertaniannya
@@ -51,7 +51,9 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-     
+    
+    /* Intinya blok CSS panjang ke bawah ini ngatur warna gradient ijo/oranye, efek bayangan (shadow), 
+       nge-set tombol print, dan ngerapiin box-box metrik (KPI) biar enak dipandang mata. */
     .header-container { background: linear-gradient(135deg, #1B5E20 0%, #2E7D32 50%, #388E3C 100%); padding: 20px; border-radius: 0px; margin: -60px -70px 30px -70px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); gap: 20px; }
     .header-left { display: flex; align-items: center; gap: 20px; }
     .header-logo { height: 80px; width: auto; margin-left: 20px; }
@@ -101,21 +103,31 @@ st.markdown("""
 # Pake cache_resource biar koneksi ke GSheets ga di-restart terus tiap user nge-klik sesuatu
 @st.cache_resource
 def connect_to_gsheets():
-    try:
-        # Ambil data dari Streamlit Secrets
-        secret_info = st.secrets["gserviceaccount"]
+    try: # Nyoba konek nih
+        # Ambil salinan dict credential dari secrets agar bisa dimodifikasi di memori
+        credentials_dict = dict(st.secrets["gserviceaccount"])
         
-        # --- PERBAIKAN MUTLAK: LOGIKA PARSING JSON TUNGGAL BEBAS ERROR TOML/PEM ---
-        if "json_string" in secret_info:
-            # Muat string JSON murni langsung menjadi dictionary Python
-            credentials_dict = json.loads(secret_info["json_string"])
-        else:
-            credentials_dict = dict(secret_info)
-            
-        # Pastikan format private_key menerjemahkan karakter breakline secara benar
-        if "private_key" in credentials_dict:
-            credentials_dict["private_key"] = credentials_dict["private_key"].replace("\\n", "\n")
-        # -------------------------------------------------------------------------
+        # --- LOGIKA SAKTI SANITASI KUNCI PEM PRIVATE KEY ---
+        raw_key = credentials_dict["private_key"]
+        
+        # 1. Bersihkan penulisan literal \n jika tidak sengaja ter-escape ganda di TOML
+        raw_key = raw_key.replace("\\n", "\n")
+        
+        # 2. Pisahkan teks berdasarkan baris baru untuk mendeteksi isi kunci asli
+        lines = [line.strip() for line in raw_key.split("\n") if line.strip()]
+        
+        # 3. Rekonstruksi struktur PEM: satukan bagian header, body kunci, dan footer secara bersih
+        header = "-----BEGIN PRIVATE KEY-----"
+        footer = "-----END PRIVATE KEY-----"
+        
+        # Ambil semua teks body di antara header dan footer
+        body_lines = [l for l in lines if "-----" not in l]
+        body_text = "".join(body_lines)
+        
+        # Atur ulang ke format string PEM lurus tunggal yang dimengerti library cryptography
+        clean_key = f"{header}\n{body_text}\n{footer}\n"
+        credentials_dict["private_key"] = clean_key
+        # -----------------------------------------------------------------
         
         scopes = [ # Tentu-in izin aksesnya (baca sheets & drive)
             'https://www.googleapis.com/auth/spreadsheets',
@@ -250,9 +262,8 @@ def get_db_connection():
 # Fungsi buat ngamanin password (hashing), jadi ga kelihatan wujud aslinya di DB
 def hash_password(password):
     salt = os.urandom(16) # Bumbu rahasia (salt) acak 16 byte
-    # Enkripsi pake algoritma pbkdf2_hmac sha256 (diulang 200rb kali biar alot buat di-hack)
     digest = hashlib.pbkdf2_hmac("sha256", str(password).encode("utf-8"), salt, 200000)
-    return f"{salt.hex()}${digest.hex()}" # Gabungin salt sama hasilnya pisahin pake dollar sign
+    return f"{salt.hex()}${digest.hex()}"
 
 # Fungsi buat nyocokin password user yang lagi login sama yang ada di DB
 def verify_password(password, stored_hash):
@@ -645,6 +656,7 @@ def render_dashboard():
     opt_lahan_non_rawa = 0
     cetak_sawah = 0
     padi_gogo = 0
+    sub_brigade_pangan = 0
     brigade_pangan = 0
     
     update_kegiatan = 0
@@ -845,11 +857,6 @@ def render_dashboard():
                 st.warning("Menggunakan data fallback contoh.")
         except Exception as e:
             st.warning(f"Menggunakan data default contoh. Error: {str(e)}")
-    else:
-        if not sheets_config:
-            st.info("Konfigurasi [sheets] belum diatur di secrets.toml. Saat ini menampilkan data contoh.")
-        else:
-            st.info("Konfigurasi Google Sheets belum lengkap di backend. Saat ini menampilkan data contoh.")
     
     # ------------------ SEKSI RENDER DASHBOARD LAYOUT ------------------
     st.markdown('<div class="section-header">PENCAPAIAN KPI PROGRAM SWASEMBADA TA 2025</div>', unsafe_allow_html=True)
@@ -912,7 +919,7 @@ def render_dashboard():
             st.plotly_chart(fig_pie, use_container_width=True)
         
         if show_chart_inovasi:
-            st.markdown('<div class="section-header" style="margin-top: 30px;">KOMKOMPONEN INOVASI TEKNOLOGI YANG DIGUNAKAN</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header" style="margin-top: 30px;">KOMPONEN INOVASI TEKNOLOGI YANG DIGUNAKAN</div>', unsafe_allow_html=True)
             if df_inovasi is None or df_inovasi.empty:
                 df_inovasi = pd.DataFrame({'Produk': ['Sistem tanam', 'VUB', 'Alsintan', 'Pengairan'], 'Total Kegiatan': [212, 212, 149, 135]})
             fig_inovasi = go.Figure(go.Bar(y=df_inovasi['Produk'], x=df_inovasi['Total Kegiatan'], orientation='h', marker=dict(color='#2E7D32'), text=df_inovasi['Total Kegiatan'], textposition='outside'))
@@ -921,6 +928,9 @@ def render_dashboard():
     
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown('<div class="profesi-header">JUMLAH SASARAN BERDASARKAN PROFESI</div>', unsafe_allow_html=True)
+    icon_mapping = {'Peserta Petani (orang)': '👨‍🌾', 'Peserta Penyuluh Pertanian (orang)': '👨‍🏫', 'Peserta  POPT (orang)': '🦗', 'Peserta  PBT (orang)': '🌾', 'Peserta Babinsa (orang)': '👨‍✈️', 'Peserta Staf Dinas (orang)': '👨‍💻', 'Peserta lainnya (orang) sebutkan': '👔'}
+    profesi_order = ['Peserta Petani (orang)', 'Peserta Penyuluh Pertanian (orang)', 'Peserta  POPT (orang)', 'Peserta  PBT (orang)', 'Peserta Babinsa (orang)', 'Peserta Staf Dinas (orang)', 'Peserta lainnya (orang) sebutkan']
+    label_mapping = {'Peserta Petani (orang)': 'Petani', 'Peserta Penyuluh Pertanian (orang)': 'Penyuluh Pertanian', 'Peserta  POPT (orang)': 'POPT', 'Peserta  PBT (orang)': 'PBT', 'Peserta Babinsa (orang)': 'Babinsa', 'Peserta Staf Dinas (orang)': 'Staf Dinas', 'Peserta lainnya (orang) sebutkan': 'Profesi Lainnya'}
     
     profesi_list = []
     profesi_values = {}
@@ -1004,7 +1014,7 @@ def render_dashboard():
     st.markdown('<style>div.block-container{padding-bottom: 0rem;}</style>', unsafe_allow_html=True)
     trigger_print_if_requested()
 
-# INI MAIN ENTRY POINT PROGRAMNYA
+# INI MAIN ENTRY POINT PROGRAMNYA: (Dieksekusi pas filenya dijalanin)
 if __name__ == "__main__":
     init_admin_state() # 1. Siapin otak state-nya
 
