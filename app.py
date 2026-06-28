@@ -104,15 +104,37 @@ st.markdown("""
 @st.cache_resource
 def connect_to_gsheets():
     try: # Nyoba konek nih
-        # --- PERBAIKAN: MEMBACA FROM TOML SAKTI SECARA LANGSUNG ---
+        # Ambil salinan dict credential dari secrets agar bisa dimodifikasi di memori
         credentials_dict = dict(st.secrets["gserviceaccount"])
-        credentials_dict["private_key"] = credentials_dict["private_key"].replace("\\n", "\n")
+        
+        # --- LOGIKA SAKTI SANITASI KUNCI PEM PRIVATE KEY ---
+        raw_key = credentials_dict["private_key"]
+        
+        # 1. Bersihkan penulisan literal \n jika tidak sengaja ter-escape ganda di TOML
+        raw_key = raw_key.replace("\\n", "\n")
+        
+        # 2. Pisahkan teks berdasarkan baris baru untuk mendeteksi isi kunci asli
+        lines = [line.strip() for line in raw_key.split("\n") if line.strip()]
+        
+        # 3. Rekonstruksi struktur PEM: satukan bagian header, body kunci, dan footer secara bersih
+        header = "-----BEGIN PRIVATE KEY-----"
+        footer = "-----END PRIVATE KEY-----"
+        
+        # Ambil semua teks body di antara header dan footer
+        body_lines = [l for l in lines if "-----" not in l]
+        body_text = "".join(body_lines)
+        
+        # Atur ulang ke format string PEM lurus tunggal yang dimengerti library cryptography
+        clean_key = f"{header}\n{body_text}\n{footer}\n"
+        credentials_dict["private_key"] = clean_key
+        # -----------------------------------------------------------------
         
         scopes = [ # Tentu-in izin aksesnya (baca sheets & drive)
             'https://www.googleapis.com/auth/spreadsheets',
             'https://www.googleapis.com/auth/drive'
         ]
-        # Bikin token kredensial pake data tadi
+        
+        # Bikin token kredensial pake data rapi tadi
         credentials = Credentials.from_service_account_info(
             credentials_dict,
             scopes=scopes
